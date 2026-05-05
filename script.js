@@ -477,142 +477,144 @@ function compareJson(obj1, obj2, path) {
     return result;
 }
 
-function renderRawObject(val, key, path, side, depth, statusClass, statusIcon, isRoot = false) {
-    const container = document.createElement('div');
-    container.className = 'tree-node';
-    if (key === 'product_codes') container.classList.add('product-codes-node');
+        function renderRawObject(val, key, path, side, depth, statusClass, statusIcon, isRoot = false, isIgnored = false) {
+            const container = document.createElement('div');
+            container.className = 'tree-node';
+            if (key === 'product_codes') container.classList.add('product-codes-node');
 
-    if (val === null || typeof val !== 'object') {
-        const displayVal = formatValue(val);
-        container.innerHTML = `
-            <span class="node-header">
-                <span class="node-toggle"></span>
-                <span class="node-key">${isRoot ? 'Root' : key}</span>
-                <span class="node-value">${displayVal}</span>
-                <span class="status-icon ${statusClass}">${statusIcon}</span>
-                <span class="node-path">${path}</span>
-            </span>`;
-        return container;
-    }
+            const finalStatusClass = isIgnored ? 'matched' : statusClass;
+            const finalStatusIcon = isIgnored ? '✓' : statusIcon;
 
-    const isArray = Array.isArray(val);
-    const typeIcon = isArray ? '📋' : '📁';
-    const typeStr = isArray ? 'array' : 'object';
-    
-    const keys = Object.keys(val).filter(k => !IGNORED_FIELDS.includes(k));
-    const hasChildren = keys.length > 0;
-    const toggle = hasChildren ? `<span class="node-toggle" onclick="toggleNode(this)">▶</span>` : '<span class="node-toggle"></span>';
-    
-    let recordCountStr = '';
-    if (isArray) {
-        recordCountStr = `<span class="node-type" style="margin-left: 8px; color: #dcdcaa;">(${val.length} items)</span>`;
-    }
+            if (val === null || typeof val !== 'object') {
+                const displayVal = formatValue(val);
+                container.innerHTML = `
+                    <span class="node-header">
+                        <span class="node-toggle"></span>
+                        <span class="node-key">${isRoot ? 'Root' : key}</span>
+                        <span class="node-value">${displayVal}</span>
+                        <span class="status-icon ${finalStatusClass}">${finalStatusIcon}</span>
+                        <span class="node-path">${path}</span>
+                    </span>`;
+                return container;
+            }
 
-    container.innerHTML = `
-        <span class="node-header" onclick="toggleNode(this)">
-            ${toggle}
-            <span class="node-type">${typeIcon}</span>
-            <span class="node-key">${isRoot ? 'Root' : key}</span>
-            <span class="node-type">${typeStr}</span>
-            ${recordCountStr}
-            <span class="status-icon ${statusClass}">${statusIcon}</span>
-            <span class="node-path">${path}</span>
-        </span>`;
+            const isArray = Array.isArray(val);
+            const typeIcon = isArray ? '📋' : '📁';
+            const typeStr = isArray ? 'array' : 'object';
+            
+            const keys = Object.keys(val).filter(k => !IGNORED_FIELDS.includes(k));
+            const hasChildren = keys.length > 0;
+            const toggle = hasChildren ? `<span class="node-toggle" onclick="toggleNode(this)">▶</span>` : '<span class="node-toggle"></span>';
+            
+            let recordCountStr = '';
+            if (isArray) {
+                recordCountStr = `<span class="node-type" style="margin-left: 8px; color: #dcdcaa;">(${val.length} items)</span>`;
+            }
 
-    if (hasChildren) {
-        const childrenContainer = document.createElement('div');
-        childrenContainer.className = 'children';
-        for (const k of keys) {
-            const childPath = isArray ? `${path}[${k}]` : (path ? `${path}.${k}` : k);
-            childrenContainer.appendChild(renderRawObject(val[k], k, childPath, side, depth + 1, statusClass, statusIcon, false));
+            container.innerHTML = `
+                <span class="node-header" onclick="toggleNode(this)">
+                    ${toggle}
+                    <span class="node-type">${typeIcon}</span>
+                    <span class="node-key">${isRoot ? 'Root' : key}</span>
+                    <span class="node-type">${typeStr}</span>
+                    ${recordCountStr}
+                    <span class="status-icon ${finalStatusClass}">${finalStatusIcon}</span>
+                    <span class="node-path">${path}</span>
+                </span>`;
+
+            if (hasChildren) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'children';
+                for (const k of keys) {
+                    const childPath = isArray ? `${path}[${k}]` : (path ? `${path}.${k}` : k);
+                    childrenContainer.appendChild(renderRawObject(val[k], k, childPath, side, depth + 1, statusClass, statusIcon, false, isIgnored));
+                }
+                container.appendChild(childrenContainer);
+            }
+            return container;
         }
-        container.appendChild(childrenContainer);
-    }
-    return container;
-}
 
-function renderDiff(diff, isRoot = true) {
-    dualTreeView.style.display = 'flex';
-    initialMessage.style.display = 'none';
+        function renderDiff(diff, isRoot = true) {
+            dualTreeView.style.display = 'flex';
+            initialMessage.style.display = 'none';
 
-    if (isRoot && diff.type === 'equal' && diff.children.length === 0) {
-        treeContainer1.innerHTML = '<div class="no-files">Files are identical</div>';
-        treeContainer2.innerHTML = '<div class="no-files">Files are identical</div>';
-        return;
-    }
+            if (isRoot && diff.type === 'equal' && diff.children.length === 0) {
+                treeContainer1.innerHTML = '<div class="no-files">Files are identical</div>';
+                treeContainer2.innerHTML = '<div class="no-files">Files are identical</div>';
+                return;
+            }
 
-    treeContainer1.innerHTML = '';
-    treeContainer2.innerHTML = '';
-    
-    const node1 = renderNode(diff, 1, 0, isRoot);
-    const node2 = renderNode(diff, 2, 0, isRoot);
-    
-    if (node1) treeContainer1.appendChild(node1);
-    if (node2) treeContainer2.appendChild(node2);
-}
-
-function renderNode(node, side, depth, isRoot = false) {
-    // Filter nodes based on side
-    if (side === 1 && node.type === 'added') return null;
-    if (side === 2 && node.type === 'removed') return null;
-
-    const container = document.createElement('div');
-    container.className = 'tree-node';
-    if (node.key === 'product_codes') container.classList.add('product-codes-node');
-
-    if (node.type === 'equal') {
-        if (node.value !== null && typeof node.value === 'object') {
-            return renderRawObject(node.value, node.key, node.path, side, depth, 'matched', '✓', isRoot);
+            treeContainer1.innerHTML = '';
+            treeContainer2.innerHTML = '';
+            
+            const node1 = renderNode(diff, 1, 0, isRoot);
+            const node2 = renderNode(diff, 2, 0, isRoot);
+            
+            if (node1) treeContainer1.appendChild(node1);
+            if (node2) treeContainer2.appendChild(node2);
         }
-        const value = formatValue(node.value);
-        container.innerHTML = `
-            <span class="node-header">
-                <span class="node-toggle"></span>
-                <span class="node-key">${isRoot ? 'Root' : node.key}</span>
-                <span class="node-value">${value}</span>
-                <span class="status-icon matched">✓</span>
-            </span>`;
-        return container;
-    }
 
-    if (node.type === 'modified') {
-        const val = side === 1 ? node.oldValue : node.newValue;
-        if (val !== null && typeof val === 'object') {
-            return renderRawObject(val, node.key, node.path, side, depth, 'modified', '~', isRoot);
-        }
-        const displayVal = formatValue(val, true);
-        container.innerHTML = `
-            <span class="node-header">
-                <span class="node-toggle"></span>
-                <span class="node-key">${node.key}</span>
-                <span class="node-value modified">${displayVal}</span>
-                <span class="status-icon modified">~</span>
-                <span class="node-path">${node.path}</span>
-            </span>`;
-        return container;
-    }
+        function renderNode(node, side, depth, isRoot = false) {
+            // Filter nodes based on side
+            if (side === 1 && node.type === 'added') return null;
+            if (side === 2 && node.type === 'removed') return null;
 
-    if (node.type === 'added' || node.type === 'removed') {
-        if (node.value !== null && typeof node.value === 'object') {
-            const statusClass = node.type;
-            const statusIcon = node.type === 'added' ? '+' : '-';
-            return renderRawObject(node.value, node.key, node.path, side, depth, statusClass, statusIcon, isRoot);
-        }
-        const value = formatValue(node.value, true);
-        const statusClass = node.type;
-        const statusIcon = node.type === 'added' ? '+' : '-';
-        container.innerHTML = `
-            <span class="node-header">
-                <span class="node-toggle"></span>
-                <span class="node-key">${node.key}</span>
-                <span class="node-value">${value}</span>
-                <span class="status-icon ${statusClass}">${statusIcon}</span>
-                <span class="node-path">${node.path}</span>
-            </span>`;
-        return container;
-    }
+            const container = document.createElement('div');
+            container.className = 'tree-node';
+            if (node.key === 'product_codes') container.classList.add('product-codes-node');
 
-    if (node.type === 'object' || node.type === 'array' || node.type === 'root') {
+            const statusClass = node.isIgnored ? 'matched' : (node.type === 'equal' ? 'matched' : node.type);
+            const statusIcon = node.isIgnored ? '✓' : (node.type === 'equal' ? '✓' : (node.type === 'modified' ? '~' : (node.type === 'added' ? '+' : '-')));
+
+            if (node.type === 'equal') {
+                if (node.value !== null && typeof node.value === 'object') {
+                    return renderRawObject(node.value, node.key, node.path, side, depth, 'matched', '✓', isRoot, node.isIgnored);
+                }
+                const value = formatValue(node.value);
+                container.innerHTML = `
+                    <span class="node-header">
+                        <span class="node-toggle"></span>
+                        <span class="node-key">${isRoot ? 'Root' : node.key}</span>
+                        <span class="node-value">${value}</span>
+                        <span class="status-icon matched">✓</span>
+                    </span>`;
+                return container;
+            }
+
+            if (node.type === 'modified') {
+                const val = side === 1 ? node.oldValue : node.newValue;
+                if (val !== null && typeof val === 'object') {
+                    return renderRawObject(val, node.key, node.path, side, depth, statusClass, statusIcon, isRoot, node.isIgnored);
+                }
+                const displayVal = formatValue(val, true);
+                container.innerHTML = `
+                    <span class="node-header">
+                        <span class="node-toggle"></span>
+                        <span class="node-key">${node.key}</span>
+                        <span class="node-value ${node.isIgnored ? '' : 'modified'}">${displayVal}</span>
+                        <span class="status-icon ${statusClass}">${statusIcon}</span>
+                        <span class="node-path">${node.path}</span>
+                    </span>`;
+                return container;
+            }
+
+            if (node.type === 'added' || node.type === 'removed') {
+                if (node.value !== null && typeof node.value === 'object') {
+                    return renderRawObject(node.value, node.key, node.path, side, depth, statusClass, statusIcon, isRoot, node.isIgnored);
+                }
+                const value = formatValue(node.value, true);
+                container.innerHTML = `
+                    <span class="node-header">
+                        <span class="node-toggle"></span>
+                        <span class="node-key">${node.key}</span>
+                        <span class="node-value">${value}</span>
+                        <span class="status-icon ${statusClass}">${statusIcon}</span>
+                        <span class="node-path">${node.path}</span>
+                    </span>`;
+                return container;
+            }
+
+            if (node.type === 'object' || node.type === 'array' || node.type === 'root') {
         const typeIcon = node.type === 'object' ? '📁' : (node.type === 'array' ? '📋' : '');
         
         // Sort children: Match/Modified > Side-specific (Added or Removed)
