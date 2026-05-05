@@ -171,6 +171,58 @@
             font-size: 0.85rem;
             margin-left: 10px;
         }
+        .sub-controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            padding: 12px 16px;
+            background: #252526;
+            border-radius: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .search-box {
+            flex: 1;
+            min-width: 200px;
+        }
+        .search-box input {
+            width: 100%;
+            background: #2d2d2d;
+            border: 1px solid #3c3c3c;
+            color: #d4d4d4;
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .filter-item input {
+            cursor: pointer;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn-small {
+            padding: 6px 12px !important;
+            font-size: 12px !important;
+            background: #3c3c3c !important;
+        }
+        .btn-small:hover {
+            background: #4c4c4c !important;
+        }
+        .hidden {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -213,6 +265,31 @@
         </div>
     </div>
 
+    <div class="sub-controls" id="subControls" style="display: none;">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search keys or values...">
+        </div>
+        <div class="filters">
+            <label class="filter-item matched">
+                <input type="checkbox" id="filterMatched" checked> Matched
+            </label>
+            <label class="filter-item added">
+                <input type="checkbox" id="filterAdded" checked> Added
+            </label>
+            <label class="filter-item removed">
+                <input type="checkbox" id="filterRemoved" checked> Removed
+            </label>
+            <label class="filter-item modified">
+                <input type="checkbox" id="filterModified" checked> Modified
+            </label>
+        </div>
+        <div class="action-buttons">
+            <button id="expandAllBtn" class="btn-small">Expand All</button>
+            <button id="collapseAllBtn" class="btn-small">Collapse All</button>
+            <button id="exportBtn" class="btn-small">Export JSON</button>
+        </div>
+    </div>
+
     <div class="tree-container" id="treeContainer">
         <div class="no-files">Select two JSON files and click Compare to see differences</div>
     </div>
@@ -228,6 +305,15 @@
         const file2Input = document.getElementById('file2');
         const compareBtn = document.getElementById('compareBtn');
         const summaryEl = document.getElementById('summary');
+        const subControlsEl = document.getElementById('subControls');
+        const searchInput = document.getElementById('searchInput');
+        const filterMatched = document.getElementById('filterMatched');
+        const filterAdded = document.getElementById('filterAdded');
+        const filterRemoved = document.getElementById('filterRemoved');
+        const filterModified = document.getElementById('filterModified');
+        const expandAllBtn = document.getElementById('expandAllBtn');
+        const collapseAllBtn = document.getElementById('collapseAllBtn');
+        const exportBtn = document.getElementById('exportBtn');
         const treeContainer = document.getElementById('treeContainer');
 
         file1Input.addEventListener('change', (e) => {
@@ -274,12 +360,99 @@
             updateSummary(diffResult);
         });
 
+        searchInput.addEventListener('input', applyFilters);
+        [filterMatched, filterAdded, filterRemoved, filterModified].forEach(el => {
+            el.addEventListener('change', applyFilters);
+        });
+
+        expandAllBtn.addEventListener('click', () => {
+            document.querySelectorAll('.children').forEach(el => {
+                el.classList.add('expanded');
+            });
+            document.querySelectorAll('.node-toggle').forEach(el => {
+                if (el.textContent === '▶') el.textContent = '▼';
+            });
+        });
+
+        collapseAllBtn.addEventListener('click', () => {
+            document.querySelectorAll('.children').forEach(el => {
+                if (!el.parentElement.classList.contains('tree-container')) {
+                    el.classList.remove('expanded');
+                }
+            });
+            document.querySelectorAll('.node-toggle').forEach(el => {
+                if (el.textContent === '▼') el.textContent = '▶';
+            });
+        });
+
+        exportBtn.addEventListener('click', () => {
+            if (!diffResult) return;
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(diffResult, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "diff_result.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        });
+
+        function applyFilters() {
+            const query = searchInput.value.toLowerCase();
+            const showMatched = filterMatched.checked;
+            const showAdded = filterAdded.checked;
+            const showRemoved = filterRemoved.checked;
+            const showModified = filterModified.checked;
+
+            const nodes = treeContainer.querySelectorAll('.tree-node');
+            
+            nodes.forEach(node => {
+                node.classList.add('hidden');
+            });
+
+            nodes.forEach(node => {
+                const header = node.querySelector(':scope > .node-header');
+                const statusIcon = header.querySelector('.status-icon');
+                const text = header.textContent.toLowerCase();
+                
+                let matchesStatus = false;
+                if (statusIcon) {
+                    if (statusIcon.classList.contains('matched') && showMatched) matchesStatus = true;
+                    if (statusIcon.classList.contains('added') && showAdded) matchesStatus = true;
+                    if (statusIcon.classList.contains('removed') && showRemoved) matchesStatus = true;
+                    if (statusIcon.classList.contains('modified') && showModified) matchesStatus = true;
+                }
+
+                const matchesQuery = query ? text.includes(query) : true;
+
+                if (matchesStatus && matchesQuery) {
+                    node.classList.remove('hidden');
+                } else if (!statusIcon && query && text.includes(query)) {
+                    node.classList.remove('hidden');
+                }
+            });
+
+            // Ensure parents of visible nodes are visible
+            let hasVisible = true;
+            while (hasVisible) {
+                hasVisible = false;
+                treeContainer.querySelectorAll('.tree-node:not(.hidden)').forEach(node => {
+                    let parent = node.parentElement.closest('.tree-node');
+                    if (parent && parent.classList.contains('hidden')) {
+                        parent.classList.remove('hidden');
+                        hasVisible = true;
+                    }
+                });
+            }
+        }
+
         function updateSummary(diff) {
             summaryEl.style.display = 'flex';
+            subControlsEl.style.display = 'flex';
             document.getElementById('matchedCount').textContent = diff.stats.matched;
             document.getElementById('addedCount').textContent = diff.stats.added;
             document.getElementById('removedCount').textContent = diff.stats.removed;
             document.getElementById('modifiedCount').textContent = diff.stats.modified;
+            applyFilters();
         }
 
         function compareJson(obj1, obj2, path) {
@@ -318,6 +491,7 @@
 
             if (type1 === 'object') {
                 result.type = 'object';
+                result.isProductCodeArray = Array.isArray(obj1) || Array.isArray(obj2);
                 const keys1 = Object.keys(obj1);
                 const keys2 = Object.keys(obj2);
                 const allKeys = new Set([...keys1, ...keys2]);
@@ -333,6 +507,8 @@
                             key: key,
                             path: childPath,
                             value: obj2[key],
+                            inBoth: false,
+                            recordCount: Array.isArray(obj2[key]) ? obj2[key].length : null,
                             stats: { matched: 0, added: 1, removed: 0, modified: 0 }
                         };
                         result.children.push(addedNode);
@@ -343,6 +519,8 @@
                             key: key,
                             path: childPath,
                             value: obj1[key],
+                            inBoth: false,
+                            recordCount: Array.isArray(obj1[key]) ? obj1[key].length : null,
                             stats: { matched: 0, added: 0, removed: 1, modified: 0 }
                         };
                         result.children.push(removedNode);
@@ -350,6 +528,8 @@
                     } else {
                         const childResult = compareJson(obj1[key], obj2[key], childPath);
                         childResult.key = key;
+                        childResult.inBoth = true;
+                        childResult.recordCount = Array.isArray(obj2[key]) ? obj2[key].length : null;
                         result.children.push(childResult);
                         result.stats.matched += childResult.stats.matched;
                         result.stats.added += childResult.stats.added;
@@ -359,38 +539,100 @@
                 }
             } else if (type1 === 'array') {
                 result.type = 'array';
-                const maxLen = Math.max(obj1.length, obj2.length);
                 
-                for (let i = 0; i < maxLen; i++) {
-                    const childPath = `${path}[${i}]`;
-                    if (i >= obj1.length) {
-                        const addedNode = {
-                            type: 'added',
-                            key: i,
-                            path: childPath,
-                            value: obj2[i],
-                            stats: { matched: 0, added: 1, removed: 0, modified: 0 }
-                        };
-                        result.children.push(addedNode);
-                        result.stats.added++;
-                    } else if (i >= obj2.length) {
-                        const removedNode = {
-                            type: 'removed',
-                            key: i,
-                            path: childPath,
-                            value: obj1[i],
-                            stats: { matched: 0, added: 0, removed: 1, modified: 0 }
-                        };
-                        result.children.push(removedNode);
-                        result.stats.removed++;
-                    } else {
-                        const childResult = compareJson(obj1[i], obj2[i], childPath);
-                        childResult.key = i;
-                        result.children.push(childResult);
-                        result.stats.matched += childResult.stats.matched;
-                        result.stats.added += childResult.stats.added;
-                        result.stats.removed += childResult.stats.removed;
-                        result.stats.modified += childResult.stats.modified;
+                const findCommonIdKey = (arr) => {
+                    const idKeys = ['id', 'name', 'code', 'key', 'uuid'];
+                    for (const item of arr) {
+                        if (item && typeof item === 'object') {
+                            for (const key of idKeys) {
+                                if (key in item) return key;
+                            }
+                        }
+                    }
+                    return null;
+                };
+
+                const idKey1 = findCommonIdKey(obj1);
+                const idKey2 = findCommonIdKey(obj2);
+                const idKey = idKey1 === idKey2 ? idKey1 : (idKey1 || idKey2);
+
+                if (idKey && obj1.every(i => i && typeof i === 'object') && obj2.every(i => i && typeof i === 'object')) {
+                    const map1 = new Map(obj1.map((item, index) => [item[idKey], {item, index}]));
+                    const map2 = new Map(obj2.map((item, index) => [item[idKey], {item, index}]));
+                    
+                    const allIds = new Set([...map1.keys(), ...map2.keys()]);
+                    
+                    for (const id of allIds) {
+                        const val1 = map1.get(id);
+                        const val2 = map2.get(id);
+                        
+                        if (!val1) {
+                            const childPath = `${path}[${val2.index}]`;
+                            const addedNode = {
+                                type: 'added',
+                                key: `[${val2.index}] (${idKey}:${id})`,
+                                path: childPath,
+                                value: val2.item,
+                                stats: { matched: 0, added: 1, removed: 0, modified: 0 }
+                            };
+                            result.children.push(addedNode);
+                            result.stats.added++;
+                        } else if (!val2) {
+                            const childPath = `${path}[${val1.index}]`;
+                            const removedNode = {
+                                type: 'removed',
+                                key: `[${val1.index}] (${idKey}:${id})`,
+                                path: childPath,
+                                value: val1.item,
+                                stats: { matched: 0, added: 0, removed: 1, modified: 0 }
+                            };
+                            result.children.push(removedNode);
+                            result.stats.removed++;
+                        } else {
+                            const childPath = `${path}[${val1.index}->${val2.index}]`;
+                            const childResult = compareJson(val1.item, val2.item, childPath);
+                            childResult.key = `[${val1.index}] (${idKey}:${id})`;
+                            result.children.push(childResult);
+                            result.stats.matched += childResult.stats.matched;
+                            result.stats.added += childResult.stats.added;
+                            result.stats.removed += childResult.stats.removed;
+                            result.stats.modified += childResult.stats.modified;
+                        }
+                    }
+                } else {
+                    const maxLen = Math.max(obj1.length, obj2.length);
+                    
+                    for (let i = 0; i < maxLen; i++) {
+                        const childPath = `${path}[${i}]`;
+                        if (i >= obj1.length) {
+                            const addedNode = {
+                                type: 'added',
+                                key: i,
+                                path: childPath,
+                                value: obj2[i],
+                                stats: { matched: 0, added: 1, removed: 0, modified: 0 }
+                            };
+                            result.children.push(addedNode);
+                            result.stats.added++;
+                        } else if (i >= obj2.length) {
+                            const removedNode = {
+                                type: 'removed',
+                                key: i,
+                                path: childPath,
+                                value: obj1[i],
+                                stats: { matched: 0, added: 0, removed: 1, modified: 0 }
+                            };
+                            result.children.push(removedNode);
+                            result.stats.removed++;
+                        } else {
+                            const childResult = compareJson(obj1[i], obj2[i], childPath);
+                            childResult.key = i;
+                            result.children.push(childResult);
+                            result.stats.matched += childResult.stats.matched;
+                            result.stats.added += childResult.stats.added;
+                            result.stats.removed += childResult.stats.removed;
+                            result.stats.modified += childResult.stats.modified;
+                        }
                     }
                 }
             } else {
