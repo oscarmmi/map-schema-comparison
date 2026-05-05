@@ -1,4 +1,4 @@
-const IGNORED_FIELDS = ['modifiers'];
+const IGNORED_FIELDS = ['modifiers', 'columns'];
 
 let json1 = null;
 let json2 = null;
@@ -244,9 +244,7 @@ function compareJson(obj1, obj2, path) {
         const allKeys = new Set([...keys1, ...keys2]);
 
         for (const key of allKeys) {
-            if (IGNORED_FIELDS.includes(key)) {
-                continue;
-            }
+            const isIgnored = IGNORED_FIELDS.includes(key);
             const childPath = path ? `${path}.${key}` : key;
             if (!keys1.includes(key)) {
                 const addedNode = {
@@ -255,11 +253,13 @@ function compareJson(obj1, obj2, path) {
                     path: childPath,
                     value: obj2[key],
                     inBoth: false,
+                    isIgnored: isIgnored,
                     count2: Array.isArray(obj2[key]) ? obj2[key].length : null,
                     stats: { matched: 0, added: 1, removed: 0, modified: 0 }
                 };
                 result.children.push(addedNode);
-                result.stats.added++;
+                if (isIgnored) result.stats.matched++;
+                else result.stats.added++;
             } else if (!keys2.includes(key)) {
                 const removedNode = {
                     type: 'removed',
@@ -267,25 +267,33 @@ function compareJson(obj1, obj2, path) {
                     path: childPath,
                     value: obj1[key],
                     inBoth: false,
+                    isIgnored: isIgnored,
                     count1: Array.isArray(obj1[key]) ? obj1[key].length : null,
                     stats: { matched: 0, added: 0, removed: 1, modified: 0 }
                 };
                 result.children.push(removedNode);
-                result.stats.removed++;
+                if (isIgnored) result.stats.matched++;
+                else result.stats.removed++;
             } else {
                 const childResult = compareJson(obj1[key], obj2[key], childPath);
                 childResult.key = key;
                 childResult.inBoth = true;
+                childResult.isIgnored = isIgnored;
                 
                 // Set record counts for any arrays
                 if (Array.isArray(obj1[key])) childResult.count1 = obj1[key].length;
                 if (Array.isArray(obj2[key])) childResult.count2 = obj2[key].length;
                 
                 result.children.push(childResult);
-                result.stats.matched += childResult.stats.matched;
-                result.stats.added += childResult.stats.added;
-                result.stats.removed += childResult.stats.removed;
-                result.stats.modified += childResult.stats.modified;
+                
+                if (isIgnored) {
+                    result.stats.matched++;
+                } else {
+                    result.stats.matched += childResult.stats.matched;
+                    result.stats.added += childResult.stats.added;
+                    result.stats.removed += childResult.stats.removed;
+                    result.stats.modified += childResult.stats.modified;
+                }
             }
         }
     } else if (type1 === 'array') {
