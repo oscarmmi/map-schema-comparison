@@ -120,10 +120,7 @@ button:disabled {
     margin-left: 20px;
     line-height: 1.6;
 }
-.children > .tree-node {
-    margin-left: 20px;
-}
-.tree-container .tree-node:first-child {
+.tree-container > .tree-node {
     margin-left: 0;
 }
 .node-header {
