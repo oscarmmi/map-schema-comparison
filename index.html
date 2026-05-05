@@ -97,11 +97,30 @@
         .added { color: #89d185; }
         .removed { color: #f48771; }
         .modified { color: #dcdcaa; }
-        .tree-container {
+        .dual-tree-view {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 250px);
+        }
+        .tree-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             background: #252526;
             border-radius: 6px;
+            overflow: hidden;
+        }
+        .tree-header {
+            padding: 8px 16px;
+            background: #333333;
+            color: #cccccc;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border-bottom: 1px solid #3c3c3c;
+        }
+        .tree-container {
+            flex: 1;
             padding: 16px;
-            max-height: calc(100vh - 200px);
             overflow: auto;
         }
         .tree-node {
@@ -111,7 +130,7 @@
         .children > .tree-node {
             margin-left: 20px;
         }
-        .tree-container > .tree-node {
+        .tree-container .tree-node:first-child {
             margin-left: 0;
         }
         .node-header {
@@ -286,11 +305,23 @@
         <div class="action-buttons">
             <button id="expandAllBtn" class="btn-small">Expand All</button>
             <button id="collapseAllBtn" class="btn-small">Collapse All</button>
+            <button id="expandPCBtn" class="btn-small">Expand Product Codes</button>
             <button id="exportBtn" class="btn-small">Export JSON</button>
         </div>
     </div>
 
-    <div class="tree-container" id="treeContainer">
+    <div class="dual-tree-view" id="dualTreeView" style="display: none;">
+        <div class="tree-wrapper">
+            <div class="tree-header" id="treeHeader1">File 1</div>
+            <div class="tree-container" id="treeContainer1"></div>
+        </div>
+        <div class="tree-wrapper">
+            <div class="tree-header" id="treeHeader2">File 2</div>
+            <div class="tree-container" id="treeContainer2"></div>
+        </div>
+    </div>
+
+    <div id="initialMessage" class="tree-container" style="background: transparent;">
         <div class="no-files">Select two JSON files and click Compare to see differences</div>
     </div>
 
@@ -313,13 +344,18 @@
         const filterModified = document.getElementById('filterModified');
         const expandAllBtn = document.getElementById('expandAllBtn');
         const collapseAllBtn = document.getElementById('collapseAllBtn');
+        const expandPCBtn = document.getElementById('expandPCBtn');
         const exportBtn = document.getElementById('exportBtn');
-        const treeContainer = document.getElementById('treeContainer');
+        const treeContainer1 = document.getElementById('treeContainer1');
+        const treeContainer2 = document.getElementById('treeContainer2');
+        const dualTreeView = document.getElementById('dualTreeView');
+        const initialMessage = document.getElementById('initialMessage');
 
         file1Input.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
                 document.getElementById('file1Info').textContent = file.name;
+                document.getElementById('treeHeader1').textContent = `File 1: ${file.name}`;
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
@@ -337,6 +373,7 @@
             const file = e.target.files[0];
             if (file) {
                 document.getElementById('file2Info').textContent = file.name;
+                document.getElementById('treeHeader2').textContent = `File 2: ${file.name}`;
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
@@ -385,6 +422,39 @@
             });
         });
 
+        expandPCBtn.addEventListener('click', () => {
+            const containers = [treeContainer1, treeContainer2];
+            containers.forEach(container => {
+                const pcNodes = container.querySelectorAll('.product-codes-node');
+                pcNodes.forEach(pcNode => {
+                    // 1. Expand all parents of pcNode
+                    let parent = pcNode.parentElement.closest('.tree-node');
+                    while (parent) {
+                        const pChildren = parent.querySelector(':scope > .children');
+                        if (pChildren) pChildren.classList.add('expanded');
+                        const pToggle = parent.querySelector(':scope > .node-header .node-toggle');
+                        if (pToggle && pToggle.textContent === '▶') pToggle.textContent = '▼';
+                        parent = parent.parentElement.closest('.tree-node');
+                    }
+
+                    // 2. Expand pcNode itself and all its descendants
+                    const pcChildren = pcNode.querySelector(':scope > .children');
+                    if (pcChildren) {
+                        pcChildren.classList.add('expanded');
+                        const toggle = pcNode.querySelector(':scope > .node-header .node-toggle');
+                        if (toggle && toggle.textContent === '▶') toggle.textContent = '▼';
+                        
+                        pcChildren.querySelectorAll('.children').forEach(c => {
+                            c.classList.add('expanded');
+                        });
+                        pcChildren.querySelectorAll('.node-toggle').forEach(t => {
+                            if (t.textContent === '▶') t.textContent = '▼';
+                        });
+                    }
+                });
+            });
+        });
+
         exportBtn.addEventListener('click', () => {
             if (!diffResult) return;
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(diffResult, null, 2));
@@ -403,46 +473,52 @@
             const showRemoved = filterRemoved.checked;
             const showModified = filterModified.checked;
 
-            const nodes = treeContainer.querySelectorAll('.tree-node');
+            const containers = [treeContainer1, treeContainer2];
             
-            nodes.forEach(node => {
-                node.classList.add('hidden');
-            });
-
-            nodes.forEach(node => {
-                const header = node.querySelector(':scope > .node-header');
-                const statusIcon = header.querySelector('.status-icon');
-                const text = header.textContent.toLowerCase();
+            containers.forEach(container => {
+                const nodes = container.querySelectorAll('.tree-node');
                 
-                let matchesStatus = false;
-                if (statusIcon) {
-                    if (statusIcon.classList.contains('matched') && showMatched) matchesStatus = true;
-                    if (statusIcon.classList.contains('added') && showAdded) matchesStatus = true;
-                    if (statusIcon.classList.contains('removed') && showRemoved) matchesStatus = true;
-                    if (statusIcon.classList.contains('modified') && showModified) matchesStatus = true;
-                }
+                nodes.forEach(node => {
+                    node.classList.add('hidden');
+                });
 
-                const matchesQuery = query ? text.includes(query) : true;
+                nodes.forEach(node => {
+                    const header = node.querySelector(':scope > .node-header');
+                    if (!header) return;
+                    
+                    const statusIcon = header.querySelector('.status-icon');
+                    const text = header.textContent.toLowerCase();
+                    
+                    let matchesStatus = false;
+                    if (statusIcon) {
+                        if (statusIcon.classList.contains('matched') && showMatched) matchesStatus = true;
+                        if (statusIcon.classList.contains('added') && showAdded) matchesStatus = true;
+                        if (statusIcon.classList.contains('removed') && showRemoved) matchesStatus = true;
+                        if (statusIcon.classList.contains('modified') && showModified) matchesStatus = true;
+                    }
 
-                if (matchesStatus && matchesQuery) {
-                    node.classList.remove('hidden');
-                } else if (!statusIcon && query && text.includes(query)) {
-                    node.classList.remove('hidden');
-                }
-            });
+                    const matchesQuery = query ? text.includes(query) : true;
 
-            // Ensure parents of visible nodes are visible
-            let hasVisible = true;
-            while (hasVisible) {
-                hasVisible = false;
-                treeContainer.querySelectorAll('.tree-node:not(.hidden)').forEach(node => {
-                    let parent = node.parentElement.closest('.tree-node');
-                    if (parent && parent.classList.contains('hidden')) {
-                        parent.classList.remove('hidden');
-                        hasVisible = true;
+                    if (matchesStatus && matchesQuery) {
+                        node.classList.remove('hidden');
+                    } else if (!statusIcon && query && text.includes(query)) {
+                        node.classList.remove('hidden');
                     }
                 });
-            }
+
+                // Ensure parents of visible nodes are visible
+                let hasVisible = true;
+                while (hasVisible) {
+                    hasVisible = false;
+                    container.querySelectorAll('.tree-node:not(.hidden)').forEach(node => {
+                        let parent = node.parentElement.closest('.tree-node');
+                        if (parent && parent.classList.contains('hidden')) {
+                            parent.classList.remove('hidden');
+                            hasVisible = true;
+                        }
+                    });
+                }
+            });
         }
 
         function updateSummary(diff) {
@@ -491,7 +567,6 @@
 
             if (type1 === 'object') {
                 result.type = 'object';
-                result.isProductCodeArray = Array.isArray(obj1) || Array.isArray(obj2);
                 const keys1 = Object.keys(obj1);
                 const keys2 = Object.keys(obj2);
                 const allKeys = new Set([...keys1, ...keys2]);
@@ -508,7 +583,7 @@
                             path: childPath,
                             value: obj2[key],
                             inBoth: false,
-                            recordCount: Array.isArray(obj2[key]) ? obj2[key].length : null,
+                            count2: Array.isArray(obj2[key]) ? obj2[key].length : null,
                             stats: { matched: 0, added: 1, removed: 0, modified: 0 }
                         };
                         result.children.push(addedNode);
@@ -520,7 +595,7 @@
                             path: childPath,
                             value: obj1[key],
                             inBoth: false,
-                            recordCount: Array.isArray(obj1[key]) ? obj1[key].length : null,
+                            count1: Array.isArray(obj1[key]) ? obj1[key].length : null,
                             stats: { matched: 0, added: 0, removed: 1, modified: 0 }
                         };
                         result.children.push(removedNode);
@@ -529,7 +604,11 @@
                         const childResult = compareJson(obj1[key], obj2[key], childPath);
                         childResult.key = key;
                         childResult.inBoth = true;
-                        childResult.recordCount = Array.isArray(obj2[key]) ? obj2[key].length : null;
+                        
+                        // Set record counts for any arrays
+                        if (Array.isArray(obj1[key])) childResult.count1 = obj1[key].length;
+                        if (Array.isArray(obj2[key])) childResult.count2 = obj2[key].length;
+                        
                         result.children.push(childResult);
                         result.stats.matched += childResult.stats.matched;
                         result.stats.added += childResult.stats.added;
@@ -539,6 +618,8 @@
                 }
             } else if (type1 === 'array') {
                 result.type = 'array';
+                result.count1 = obj1.length;
+                result.count2 = obj2.length;
                 
                 const findCommonIdKey = (arr) => {
                     const idKeys = ['id', 'name', 'code', 'key', 'uuid'];
@@ -600,38 +681,92 @@
                         }
                     }
                 } else {
-                    const maxLen = Math.max(obj1.length, obj2.length);
+                    const unmatched1 = obj1.map((item, index) => ({ item, index }));
+                    const unmatched2 = obj2.map((item, index) => ({ item, index }));
                     
-                    for (let i = 0; i < maxLen; i++) {
-                        const childPath = `${path}[${i}]`;
-                        if (i >= obj1.length) {
-                            const addedNode = {
-                                type: 'added',
-                                key: i,
-                                path: childPath,
-                                value: obj2[i],
-                                stats: { matched: 0, added: 1, removed: 0, modified: 0 }
-                            };
-                            result.children.push(addedNode);
-                            result.stats.added++;
-                        } else if (i >= obj2.length) {
+                    const isDeepEqual = (a, b) => {
+                        if (a === b) return true;
+                        if (a === null || b === null) return false;
+                        if (typeof a !== typeof b) return false;
+                        if (typeof a !== 'object') return false;
+                        
+                        const isArrA = Array.isArray(a);
+                        const isArrB = Array.isArray(b);
+                        if (isArrA !== isArrB) return false;
+                        
+                        if (isArrA) {
+                            if (a.length !== b.length) return false;
+                            for (let i = 0; i < a.length; i++) {
+                                if (!isDeepEqual(a[i], b[i])) return false;
+                            }
+                            return true;
+                        }
+                        
+                        const keysA = Object.keys(a).filter(k => !IGNORED_FIELDS.includes(k));
+                        const keysB = Object.keys(b).filter(k => !IGNORED_FIELDS.includes(k));
+                        if (keysA.length !== keysB.length) return false;
+                        
+                        for (const key of keysA) {
+                            if (!keysB.includes(key)) return false;
+                            if (!isDeepEqual(a[key], b[key])) return false;
+                        }
+                        return true;
+                    };
+
+                    // 1. Find and pair perfectly identical items
+                    for (let i = 0; i < unmatched1.length; i++) {
+                        const item1 = unmatched1[i];
+                        if (!item1) continue;
+                        
+                        for (let j = 0; j < unmatched2.length; j++) {
+                            const item2 = unmatched2[j];
+                            if (!item2) continue;
+                            
+                            if (isDeepEqual(item1.item, item2.item)) {
+                                const childPath = `${path}[${item1.index}->${item2.index}]`;
+                                const childResult = compareJson(item1.item, item2.item, childPath);
+                                childResult.key = `[${item1.index}]`;
+                                result.children.push(childResult);
+                                result.stats.matched += childResult.stats.matched;
+                                result.stats.added += childResult.stats.added;
+                                result.stats.removed += childResult.stats.removed;
+                                result.stats.modified += childResult.stats.modified;
+                                
+                                unmatched1[i] = null;
+                                unmatched2[j] = null;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2. Everything else is treated as a separate Add/Remove
+                    for (const item1 of unmatched1) {
+                        if (item1) {
+                            const childPath = `${path}[${item1.index}]`;
                             const removedNode = {
                                 type: 'removed',
-                                key: i,
+                                key: `[${item1.index}]`,
                                 path: childPath,
-                                value: obj1[i],
+                                value: item1.item,
                                 stats: { matched: 0, added: 0, removed: 1, modified: 0 }
                             };
                             result.children.push(removedNode);
                             result.stats.removed++;
-                        } else {
-                            const childResult = compareJson(obj1[i], obj2[i], childPath);
-                            childResult.key = i;
-                            result.children.push(childResult);
-                            result.stats.matched += childResult.stats.matched;
-                            result.stats.added += childResult.stats.added;
-                            result.stats.removed += childResult.stats.removed;
-                            result.stats.modified += childResult.stats.modified;
+                        }
+                    }
+                    
+                    for (const item2 of unmatched2) {
+                        if (item2) {
+                            const childPath = `${path}[${item2.index}]`;
+                            const addedNode = {
+                                type: 'added',
+                                key: `[${item2.index}]`,
+                                path: childPath,
+                                value: item2.item,
+                                stats: { matched: 0, added: 1, removed: 0, modified: 0 }
+                            };
+                            result.children.push(addedNode);
+                            result.stats.added++;
                         }
                     }
                 }
@@ -662,21 +797,93 @@
             return result;
         }
 
+        function renderRawObject(val, key, path, side, depth, statusClass, statusIcon, isRoot = false) {
+            const container = document.createElement('div');
+            container.className = 'tree-node';
+            if (key === 'product_codes') container.classList.add('product-codes-node');
+
+            if (val === null || typeof val !== 'object') {
+                const displayVal = formatValue(val);
+                container.innerHTML = `
+                    <span class="node-header">
+                        <span class="node-toggle"></span>
+                        <span class="node-key">${isRoot ? 'Root' : key}</span>
+                        <span class="node-value">${displayVal}</span>
+                        <span class="status-icon ${statusClass}">${statusIcon}</span>
+                        <span class="node-path">${path}</span>
+                    </span>`;
+                return container;
+            }
+
+            const isArray = Array.isArray(val);
+            const typeIcon = isArray ? '📋' : '📁';
+            const typeStr = isArray ? 'array' : 'object';
+            
+            const keys = Object.keys(val).filter(k => !IGNORED_FIELDS.includes(k));
+            const hasChildren = keys.length > 0;
+            const toggle = hasChildren ? `<span class="node-toggle" onclick="toggleNode(this)">▶</span>` : '<span class="node-toggle"></span>';
+            
+            let recordCountStr = '';
+            if (isArray) {
+                recordCountStr = `<span class="node-type" style="margin-left: 8px; color: #dcdcaa;">(${val.length} items)</span>`;
+            }
+
+            container.innerHTML = `
+                <span class="node-header" onclick="toggleNode(this)">
+                    ${toggle}
+                    <span class="node-type">${typeIcon}</span>
+                    <span class="node-key">${isRoot ? 'Root' : key}</span>
+                    <span class="node-type">${typeStr}</span>
+                    ${recordCountStr}
+                    <span class="status-icon ${statusClass}">${statusIcon}</span>
+                    <span class="node-path">${path}</span>
+                </span>`;
+
+            if (hasChildren) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'children';
+                for (const k of keys) {
+                    const childPath = isArray ? `${path}[${k}]` : (path ? `${path}.${k}` : k);
+                    childrenContainer.appendChild(renderRawObject(val[k], k, childPath, side, depth + 1, statusClass, statusIcon, false));
+                }
+                container.appendChild(childrenContainer);
+            }
+            return container;
+        }
+
         function renderDiff(diff, isRoot = true) {
-            if (isRoot && diff.type === 'equal') {
-                treeContainer.innerHTML = '<div class="no-files">Files are identical</div>';
+            dualTreeView.style.display = 'flex';
+            initialMessage.style.display = 'none';
+
+            if (isRoot && diff.type === 'equal' && diff.children.length === 0) {
+                treeContainer1.innerHTML = '<div class="no-files">Files are identical</div>';
+                treeContainer2.innerHTML = '<div class="no-files">Files are identical</div>';
                 return;
             }
 
-            treeContainer.innerHTML = '';
-            treeContainer.appendChild(renderNode(diff, 0, isRoot));
+            treeContainer1.innerHTML = '';
+            treeContainer2.innerHTML = '';
+            
+            const node1 = renderNode(diff, 1, 0, isRoot);
+            const node2 = renderNode(diff, 2, 0, isRoot);
+            
+            if (node1) treeContainer1.appendChild(node1);
+            if (node2) treeContainer2.appendChild(node2);
         }
 
-        function renderNode(node, depth, isRoot = false) {
+        function renderNode(node, side, depth, isRoot = false) {
+            // Filter nodes based on side
+            if (side === 1 && node.type === 'added') return null;
+            if (side === 2 && node.type === 'removed') return null;
+
             const container = document.createElement('div');
             container.className = 'tree-node';
+            if (node.key === 'product_codes') container.classList.add('product-codes-node');
 
             if (node.type === 'equal') {
+                if (node.value !== null && typeof node.value === 'object') {
+                    return renderRawObject(node.value, node.key, node.path, side, depth, 'matched', '✓', isRoot);
+                }
                 const value = formatValue(node.value);
                 container.innerHTML = `
                     <span class="node-header">
@@ -689,13 +896,16 @@
             }
 
             if (node.type === 'modified') {
-                const oldStr = formatValue(node.oldValue, true);
-                const newStr = formatValue(node.newValue, true);
+                const val = side === 1 ? node.oldValue : node.newValue;
+                if (val !== null && typeof val === 'object') {
+                    return renderRawObject(val, node.key, node.path, side, depth, 'modified', '~', isRoot);
+                }
+                const displayVal = formatValue(val, true);
                 container.innerHTML = `
                     <span class="node-header">
                         <span class="node-toggle"></span>
                         <span class="node-key">${node.key}</span>
-                        <span class="node-value modified">${oldStr} → ${newStr}</span>
+                        <span class="node-value modified">${displayVal}</span>
                         <span class="status-icon modified">~</span>
                         <span class="node-path">${node.path}</span>
                     </span>`;
@@ -703,6 +913,11 @@
             }
 
             if (node.type === 'added' || node.type === 'removed') {
+                if (node.value !== null && typeof node.value === 'object') {
+                    const statusClass = node.type;
+                    const statusIcon = node.type === 'added' ? '+' : '-';
+                    return renderRawObject(node.value, node.key, node.path, side, depth, statusClass, statusIcon, isRoot);
+                }
                 const value = formatValue(node.value, true);
                 const statusClass = node.type;
                 const statusIcon = node.type === 'added' ? '+' : '-';
@@ -717,41 +932,64 @@
                 return container;
             }
 
-            if (node.type === 'object' || node.type === 'array') {
-                const typeIcon = node.type === 'object' ? '📁' : '📋';
-                const hasChildren = node.children && node.children.length > 0;
-                const toggle = hasChildren ? '<span class="node-toggle" onclick="toggleNode(this)">▶</span>' : '<span class="node-toggle"></span>';
+            if (node.type === 'object' || node.type === 'array' || node.type === 'root') {
+                const typeIcon = node.type === 'object' ? '📁' : (node.type === 'array' ? '📋' : '');
                 
-                container.innerHTML = `
-                    <span class="node-header" onclick="toggleNode(this)">
-                        ${toggle}
-                        <span class="node-type">${typeIcon}</span>
-                        <span class="node-key">${isRoot ? 'Root' : node.key}</span>
-                        <span class="node-type">${node.type}</span>
-                        ${!isRoot ? `<span class="node-path">${node.path}</span>` : ''}
-                    </span>`;
+                // Sort children: Match/Modified > Side-specific (Added or Removed)
+                const sortedChildren = [...(node.children || [])].sort((a, b) => {
+                    const getRank = (n) => {
+                        if (n.type === 'equal' || n.type === 'modified' || n.type === 'object' || n.type === 'array') return 1;
+                        if (side === 1 && n.type === 'removed') return 2;
+                        if (side === 2 && n.type === 'added') return 2;
+                        return 3;
+                    };
+                    return getRank(a) - getRank(b);
+                });
+
+                let renderedChildren = [];
+                for (const child of sortedChildren) {
+                    const childEl = renderNode(child, side, depth + 1);
+                    if (childEl) renderedChildren.push(childEl);
+                }
+
+                if (renderedChildren.length === 0 && node.type !== 'root') {
+                    // If no children rendered for this side, don't show the parent either (unless root)
+                    // This handles cases where a whole branch is added/removed
+                    if (node.type === 'added' && side === 1) return null;
+                    if (node.type === 'removed' && side === 2) return null;
+                }
+
+                const hasChildren = renderedChildren.length > 0;
+                const toggle = hasChildren ? `<span class="node-toggle" onclick="toggleNode(this)">${node.type === 'root' ? '▼' : '▶'}</span>` : '<span class="node-toggle"></span>';
+                
+                if (node.type !== 'root') {
+                    let recordCountStr = '';
+                    const count = side === 1 ? node.count1 : node.count2;
+                    if (count !== null && count !== undefined) {
+                        recordCountStr = `<span class="node-type" style="margin-left: 8px; color: #dcdcaa;">(${count} items)</span>`;
+                    }
+
+                    container.innerHTML = `
+                        <span class="node-header" onclick="toggleNode(this)">
+                            ${toggle}
+                            <span class="node-type">${typeIcon}</span>
+                            <span class="node-key">${node.key}</span>
+                            <span class="node-type">${node.type}</span>
+                            ${recordCountStr}
+                            <span class="node-path">${node.path}</span>
+                        </span>`;
+                }
 
                 if (hasChildren) {
                     const childrenContainer = document.createElement('div');
-                    childrenContainer.className = 'children';
+                    childrenContainer.className = 'children' + (node.type === 'root' ? ' expanded' : '');
                     
-                    for (const child of node.children) {
-                        childrenContainer.appendChild(renderNode(child, depth + 1));
+                    for (const childEl of renderedChildren) {
+                        childrenContainer.appendChild(childEl);
                     }
                     
                     container.appendChild(childrenContainer);
                 }
-            }
-
-            if (node.type === 'root') {
-                const childrenContainer = document.createElement('div');
-                childrenContainer.className = 'children expanded';
-                
-                for (const child of node.children) {
-                    childrenContainer.appendChild(renderNode(child, depth + 1));
-                }
-                
-                container.appendChild(childrenContainer);
             }
 
             return container;
@@ -765,27 +1003,13 @@
             
             if (type === 'object') {
                 if (Array.isArray(value)) {
-                    if (forDisplay) {
-                        return `Array[${value.length}]`;
-                    }
                     return `Array[${value.length}]`;
-                }
-                if (forDisplay) {
-                    return '{...}';
                 }
                 return '{...}';
             }
             
             if (type === 'string') {
                 return `"${value}"`;
-            }
-            
-            if (type === 'number') {
-                return String(value);
-            }
-            
-            if (type === 'boolean') {
-                return String(value);
             }
             
             return String(value);
