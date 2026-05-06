@@ -211,7 +211,9 @@ function compareJson(obj1, obj2, path) {
         type: 'root',
         path: path,
         stats: { matched: 0, added: 0, removed: 0, modified: 0 },
-        children: []
+        children: [],
+        oldValue: obj1,
+        newValue: obj2
     };
 
     if (obj1 === obj2) {
@@ -234,8 +236,6 @@ function compareJson(obj1, obj2, path) {
 
     if (type1 !== type2) {
         result.type = 'modified';
-        result.oldValue = obj1;
-        result.newValue = obj2;
         result.stats.modified++;
         return result;
     }
@@ -255,6 +255,7 @@ function compareJson(obj1, obj2, path) {
                     key: key,
                     path: childPath,
                     value: obj2[key],
+                    newValue: obj2[key],
                     inBoth: false,
                     isIgnored: isIgnored,
                     count2: Array.isArray(obj2[key]) ? obj2[key].length : null,
@@ -269,6 +270,7 @@ function compareJson(obj1, obj2, path) {
                     key: key,
                     path: childPath,
                     value: obj1[key],
+                    oldValue: obj1[key],
                     inBoth: false,
                     isIgnored: isIgnored,
                     count1: Array.isArray(obj1[key]) ? obj1[key].length : null,
@@ -337,6 +339,7 @@ function compareJson(obj1, obj2, path) {
                         key: `[${val2.index}] (${idKey}:${id})`,
                         path: childPath,
                         value: val2.item,
+                        newValue: val2.item,
                         stats: { matched: 0, added: 1, removed: 0, modified: 0 }
                     };
                     result.children.push(addedNode);
@@ -348,6 +351,7 @@ function compareJson(obj1, obj2, path) {
                         key: `[${val1.index}] (${idKey}:${id})`,
                         path: childPath,
                         value: val1.item,
+                        oldValue: val1.item,
                         stats: { matched: 0, added: 0, removed: 1, modified: 0 }
                     };
                     result.children.push(removedNode);
@@ -431,6 +435,7 @@ function compareJson(obj1, obj2, path) {
                         key: `[${item1.index}]`,
                         path: childPath,
                         value: item1.item,
+                        oldValue: item1.item,
                         stats: { matched: 0, added: 0, removed: 1, modified: 0 }
                     };
                     result.children.push(removedNode);
@@ -446,6 +451,7 @@ function compareJson(obj1, obj2, path) {
                         key: `[${item2.index}]`,
                         path: childPath,
                         value: item2.item,
+                        newValue: item2.item,
                         stats: { matched: 0, added: 1, removed: 0, modified: 0 }
                     };
                     result.children.push(addedNode);
@@ -457,8 +463,6 @@ function compareJson(obj1, obj2, path) {
         if (typeof obj1 === 'number' && typeof obj2 === 'number') {
             if (obj1 !== obj2) {
                 result.type = 'modified';
-                result.oldValue = obj1;
-                result.newValue = obj2;
                 result.stats.modified++;
             } else {
                 result.type = 'equal';
@@ -467,8 +471,6 @@ function compareJson(obj1, obj2, path) {
             }
         } else {
             result.type = obj1 === obj2 ? 'equal' : 'modified';
-            result.oldValue = obj1;
-            result.newValue = obj2;
             if (obj1 === obj2) {
                 result.stats.matched++;
             } else {
@@ -491,7 +493,10 @@ function compareJson(obj1, obj2, path) {
             container.className = 'tree-node';
             if (key === 'product_codes') container.classList.add('product-codes-node');
 
-            const statusLabel = getStatusLabel(statusClass, isIgnored);
+            const fullStatusLabel = getStatusLabel(statusClass, isIgnored);
+            // Hide the label visually if it's redundant, but keep it in DOM for filtering
+            const showLabel = (depth === 0 || isIgnored);
+            const statusLabelHtml = showLabel ? fullStatusLabel : `<span class="status-label ${isIgnored ? 'matched' : statusClass}" style="display:none;"></span>`;
 
             if (val === null || typeof val !== 'object') {
                 const displayVal = formatValue(val);
@@ -500,7 +505,7 @@ function compareJson(obj1, obj2, path) {
                         <span class="node-toggle"></span>
                         <span class="node-key">${isRoot ? 'Root' : key}</span>
                         <span class="node-value">${displayVal}</span>
-                        ${statusLabel}
+                        ${statusLabelHtml}
                         <span class="node-path">${path}</span>
                     </span>`;
                 return container;
@@ -510,7 +515,7 @@ function compareJson(obj1, obj2, path) {
             const typeIcon = isArray ? '📋' : '📁';
             const typeStr = isArray ? 'array' : 'object';
             
-            const keys = Object.keys(val).filter(k => !IGNORED_FIELDS.includes(k));
+            const keys = Object.keys(val);
             const hasChildren = keys.length > 0;
             const toggle = hasChildren ? `<span class="node-toggle" onclick="toggleNode(this)">▶</span>` : '<span class="node-toggle"></span>';
             
@@ -526,7 +531,7 @@ function compareJson(obj1, obj2, path) {
                     <span class="node-key">${isRoot ? 'Root' : key}</span>
                     <span class="node-type">${typeStr}</span>
                     ${recordCountStr}
-                    ${statusLabel}
+                    ${statusLabelHtml}
                     <span class="node-path">${path}</span>
                 </span>`;
 
@@ -535,7 +540,8 @@ function compareJson(obj1, obj2, path) {
                 childrenContainer.className = 'children';
                 for (const k of keys) {
                     const childPath = isArray ? `${path}[${k}]` : (path ? `${path}.${k}` : k);
-                    childrenContainer.appendChild(renderRawObject(val[k], k, childPath, side, depth + 1, statusClass, statusIcon, false, isIgnored));
+                    const childIsIgnored = !isArray && IGNORED_FIELDS.includes(k);
+                    childrenContainer.appendChild(renderRawObject(val[k], k, childPath, side, depth + 1, statusClass, statusIcon, false, childIsIgnored));
                 }
                 container.appendChild(childrenContainer);
             }
@@ -574,9 +580,17 @@ function compareJson(obj1, obj2, path) {
             const statusClass = node.isIgnored ? 'matched' : (node.type === 'equal' ? 'matched' : node.type);
             const statusLabel = getStatusLabel(statusClass, node.isIgnored);
 
+            // If it's an ignored object/array/modified branch, force a raw render to show all fields as they are on this side
+            if (node.isIgnored && (node.type === 'object' || node.type === 'array' || node.type === 'modified')) {
+                const val = side === 1 ? node.oldValue : node.newValue;
+                if (val !== null && typeof val === 'object') {
+                    return renderRawObject(val, node.key, node.path, side, 0, 'matched', '✓', isRoot, true);
+                }
+            }
+
             if (node.type === 'equal') {
                 if (node.value !== null && typeof node.value === 'object') {
-                    return renderRawObject(node.value, node.key, node.path, side, depth, 'matched', '✓', isRoot, node.isIgnored);
+                    return renderRawObject(node.value, node.key, node.path, side, 0, 'matched', '✓', isRoot, node.isIgnored);
                 }
                 const value = formatValue(node.value);
                 container.innerHTML = `
@@ -585,6 +599,7 @@ function compareJson(obj1, obj2, path) {
                         <span class="node-key">${isRoot ? 'Root' : node.key}</span>
                         <span class="node-value">${value}</span>
                         ${statusLabel}
+                        <span class="node-path">${node.path}</span>
                     </span>`;
                 return container;
             }
@@ -592,7 +607,7 @@ function compareJson(obj1, obj2, path) {
             if (node.type === 'modified') {
                 const val = side === 1 ? node.oldValue : node.newValue;
                 if (val !== null && typeof val === 'object') {
-                    return renderRawObject(val, node.key, node.path, side, depth, statusClass, '~', isRoot, node.isIgnored);
+                    return renderRawObject(val, node.key, node.path, side, 0, statusClass, '~', isRoot, node.isIgnored);
                 }
                 const displayVal = formatValue(val, true);
                 container.innerHTML = `
@@ -608,7 +623,7 @@ function compareJson(obj1, obj2, path) {
 
             if (node.type === 'added' || node.type === 'removed') {
                 if (node.value !== null && typeof node.value === 'object') {
-                    return renderRawObject(node.value, node.key, node.path, side, depth, statusClass, (node.type === 'added' ? '+' : '-'), isRoot, node.isIgnored);
+                    return renderRawObject(node.value, node.key, node.path, side, 0, statusClass, (node.type === 'added' ? '+' : '-'), isRoot, node.isIgnored);
                 }
                 const value = formatValue(node.value, true);
                 container.innerHTML = `
@@ -644,7 +659,6 @@ function compareJson(obj1, obj2, path) {
 
         if (renderedChildren.length === 0 && node.type !== 'root') {
             // If no children rendered for this side, don't show the parent either (unless root)
-            // This handles cases where a whole branch is added/removed
             if (node.type === 'added' && side === 1) return null;
             if (node.type === 'removed' && side === 2) return null;
         }
@@ -659,6 +673,9 @@ function compareJson(obj1, obj2, path) {
                 recordCountStr = `<span class="node-type" style="margin-left: 8px; color: #dcdcaa;">(${count} items)</span>`;
             }
 
+            const containerStatus = (node.stats.modified > 0 || node.stats.added > 0 || node.stats.removed > 0) ? 'modified' : 'matched';
+            const containerLabel = getStatusLabel(containerStatus, node.isIgnored);
+
             container.innerHTML = `
                 <span class="node-header" onclick="toggleNode(this)">
                     ${toggle}
@@ -666,6 +683,7 @@ function compareJson(obj1, obj2, path) {
                     <span class="node-key">${isRoot ? 'Root' : node.key}</span>
                     <span class="node-type">${node.type}</span>
                     ${recordCountStr}
+                    ${containerLabel}
                     <span class="node-path">${node.path}</span>
                 </span>`;
         }
