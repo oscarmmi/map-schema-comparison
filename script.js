@@ -158,23 +158,26 @@ function applyFilters() {
             const header = node.querySelector(':scope > .node-header');
             if (!header) return;
             
-            const statusIcon = header.querySelector('.status-icon');
+            const statusLabel = header.querySelector('.status-label');
             const text = header.textContent.toLowerCase();
             
             let matchesStatus = false;
-            if (statusIcon) {
-                if (statusIcon.classList.contains('matched') && showMatched) matchesStatus = true;
-                if (statusIcon.classList.contains('added') && showAdded) matchesStatus = true;
-                if (statusIcon.classList.contains('removed') && showRemoved) matchesStatus = true;
-                if (statusIcon.classList.contains('modified') && showModified) matchesStatus = true;
+            if (statusLabel) {
+                if (statusLabel.classList.contains('matched') && showMatched) matchesStatus = true;
+                if (statusLabel.classList.contains('added') && showAdded) matchesStatus = true;
+                if (statusLabel.classList.contains('removed') && showRemoved) matchesStatus = true;
+                if (statusLabel.classList.contains('modified') && showModified) matchesStatus = true;
             }
 
             const matchesQuery = query ? text.includes(query) : true;
 
             if (matchesStatus && matchesQuery) {
                 node.classList.remove('hidden');
-            } else if (!statusIcon && query && text.includes(query)) {
+            } else if (!statusLabel && query && text.includes(query)) {
                 node.classList.remove('hidden');
+            } else if (!statusLabel && !query) {
+                // If no status label and no query, it's a container that should be visible if its children are
+                // We leave it hidden for now, the parent-unhiding loop will handle it
             }
         });
 
@@ -477,13 +480,18 @@ function compareJson(obj1, obj2, path) {
     return result;
 }
 
+        function getStatusLabel(statusClass, isIgnored) {
+            const text = isIgnored ? 'MATCHED' : (statusClass.toUpperCase());
+            const icon = isIgnored ? '✓' : (statusClass === 'matched' ? '✓' : (statusClass === 'added' ? '+' : (statusClass === 'removed' ? '-' : '~')));
+            return `<span class="status-label ${isIgnored ? 'matched' : statusClass}">${text} ${icon}</span>`;
+        }
+
         function renderRawObject(val, key, path, side, depth, statusClass, statusIcon, isRoot = false, isIgnored = false) {
             const container = document.createElement('div');
             container.className = 'tree-node';
             if (key === 'product_codes') container.classList.add('product-codes-node');
 
-            const finalStatusClass = isIgnored ? 'matched' : statusClass;
-            const finalStatusIcon = isIgnored ? '✓' : statusIcon;
+            const statusLabel = getStatusLabel(statusClass, isIgnored);
 
             if (val === null || typeof val !== 'object') {
                 const displayVal = formatValue(val);
@@ -492,7 +500,7 @@ function compareJson(obj1, obj2, path) {
                         <span class="node-toggle"></span>
                         <span class="node-key">${isRoot ? 'Root' : key}</span>
                         <span class="node-value">${displayVal}</span>
-                        <span class="status-icon ${finalStatusClass}">${finalStatusIcon}</span>
+                        ${statusLabel}
                         <span class="node-path">${path}</span>
                     </span>`;
                 return container;
@@ -518,7 +526,7 @@ function compareJson(obj1, obj2, path) {
                     <span class="node-key">${isRoot ? 'Root' : key}</span>
                     <span class="node-type">${typeStr}</span>
                     ${recordCountStr}
-                    <span class="status-icon ${finalStatusClass}">${finalStatusIcon}</span>
+                    ${statusLabel}
                     <span class="node-path">${path}</span>
                 </span>`;
 
@@ -564,7 +572,7 @@ function compareJson(obj1, obj2, path) {
             if (node.key === 'product_codes') container.classList.add('product-codes-node');
 
             const statusClass = node.isIgnored ? 'matched' : (node.type === 'equal' ? 'matched' : node.type);
-            const statusIcon = node.isIgnored ? '✓' : (node.type === 'equal' ? '✓' : (node.type === 'modified' ? '~' : (node.type === 'added' ? '+' : '-')));
+            const statusLabel = getStatusLabel(statusClass, node.isIgnored);
 
             if (node.type === 'equal') {
                 if (node.value !== null && typeof node.value === 'object') {
@@ -576,7 +584,7 @@ function compareJson(obj1, obj2, path) {
                         <span class="node-toggle"></span>
                         <span class="node-key">${isRoot ? 'Root' : node.key}</span>
                         <span class="node-value">${value}</span>
-                        <span class="status-icon matched">✓</span>
+                        ${statusLabel}
                     </span>`;
                 return container;
             }
@@ -584,7 +592,7 @@ function compareJson(obj1, obj2, path) {
             if (node.type === 'modified') {
                 const val = side === 1 ? node.oldValue : node.newValue;
                 if (val !== null && typeof val === 'object') {
-                    return renderRawObject(val, node.key, node.path, side, depth, statusClass, statusIcon, isRoot, node.isIgnored);
+                    return renderRawObject(val, node.key, node.path, side, depth, statusClass, '~', isRoot, node.isIgnored);
                 }
                 const displayVal = formatValue(val, true);
                 container.innerHTML = `
@@ -592,7 +600,7 @@ function compareJson(obj1, obj2, path) {
                         <span class="node-toggle"></span>
                         <span class="node-key">${node.key}</span>
                         <span class="node-value ${node.isIgnored ? '' : 'modified'}">${displayVal}</span>
-                        <span class="status-icon ${statusClass}">${statusIcon}</span>
+                        ${statusLabel}
                         <span class="node-path">${node.path}</span>
                     </span>`;
                 return container;
@@ -600,7 +608,7 @@ function compareJson(obj1, obj2, path) {
 
             if (node.type === 'added' || node.type === 'removed') {
                 if (node.value !== null && typeof node.value === 'object') {
-                    return renderRawObject(node.value, node.key, node.path, side, depth, statusClass, statusIcon, isRoot, node.isIgnored);
+                    return renderRawObject(node.value, node.key, node.path, side, depth, statusClass, (node.type === 'added' ? '+' : '-'), isRoot, node.isIgnored);
                 }
                 const value = formatValue(node.value, true);
                 container.innerHTML = `
@@ -608,7 +616,7 @@ function compareJson(obj1, obj2, path) {
                         <span class="node-toggle"></span>
                         <span class="node-key">${node.key}</span>
                         <span class="node-value">${value}</span>
-                        <span class="status-icon ${statusClass}">${statusIcon}</span>
+                        ${statusLabel}
                         <span class="node-path">${node.path}</span>
                     </span>`;
                 return container;
@@ -655,7 +663,7 @@ function compareJson(obj1, obj2, path) {
                 <span class="node-header" onclick="toggleNode(this)">
                     ${toggle}
                     <span class="node-type">${typeIcon}</span>
-                    <span class="node-key">${node.key}</span>
+                    <span class="node-key">${isRoot ? 'Root' : node.key}</span>
                     <span class="node-type">${node.type}</span>
                     ${recordCountStr}
                     <span class="node-path">${node.path}</span>

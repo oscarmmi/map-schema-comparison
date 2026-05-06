@@ -170,8 +170,38 @@ button:disabled {
 .status-icon {
     margin-left: 4px;
 }
-.no-files {
-    color: #858585;
+.status-label {
+    font-size: 0.65rem;
+    font-weight: bold;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1.2;
+}
+.status-label.matched { 
+    background: rgba(78, 201, 176, 0.1); 
+    color: #4ec9b0;
+    border: 1px solid rgba(78, 201, 176, 0.3); 
+}
+.status-label.added { 
+    background: rgba(137, 209, 133, 0.1); 
+    color: #89d185;
+    border: 1px solid rgba(137, 209, 133, 0.3); 
+}
+.status-label.removed { 
+    background: rgba(244, 135, 113, 0.1); 
+    color: #f48771;
+    border: 1px solid rgba(244, 135, 113, 0.3); 
+}
+.status-label.modified { 
+    background: rgba(220, 220, 170, 0.1); 
+    color: #dcdcaa;
+    border: 1px solid rgba(220, 220, 170, 0.3); 
+}
+.no-files {    color: #858585;
     text-align: center;
     padding: 40px;
 }
